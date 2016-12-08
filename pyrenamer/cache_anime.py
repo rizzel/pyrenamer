@@ -1,4 +1,6 @@
 from sqlite3 import connect, Row
+
+from pyrenamer.anime import Anime, AnimeRelated, AnimeTag
 from pyrenamer.config import cache_db
 from time import time
 from datetime import datetime
@@ -11,178 +13,182 @@ class CacheAnime:
     fields_int = (
         'episodes_count', 'episode_max', 'episodes_special_count', 'rating', 'vote_count', 'rating_temp',
         'vote_count_temp', 'review_rating', 'review_count', 'ann_id', 'allcinema_id', 'animenfo_id',
-        'specials_count', 'credits_count', 'other_count', 'trailer_count', 'parody_count',
+        'specials_count', 'credits_count', 'other_count', 'trailer_count', 'parody_count', 'date_flags',
     )
     fields_date = ('date_air', 'date_end', 'record_updated',)
     fields_bool = ('is_restricted',)
 
-    def __init__(self):
+    def __init__(self, aid, max_age=None):
+        """
+
+        :param int aid: The anime id
+        :param int|None max_age: The maximum age of the cache entry
+        """
         self.dbh = connect(cache_db)
         self.dbh.row_factory = Row
-        self._init_db()
 
-    def _init_db(self):
-        self.dbh.executescript('''
-CREATE TABLE IF NOT EXISTS anime (
-  aid INT NOT NULL PRIMARY KEY,
-  date_flags INT,
-  `year` TEXT,
-  `type` TEXT,
-  episodes_count INT,
-  episode_max INT,
-  episodes_special_count INT,
-  date_air INT,
-  date_end INT,
-  url TEXT,
-  picname TEXT,
-  rating INT,
-  vote_count INT,
-  rating_temp INT,
-  vote_count_temp INT,
-  review_rating INT,
-  review_count INT,
-  is_restricted INT,
-  ann_id INT,
-  allcinema_id INT,
-  animenfo_id INT,
-  record_updated INT,
-  specials_count INT,
-  credits_count INT,
-  other_count INT,
-  trailer_count INT,
-  parody_count INT,
+        self.aid = aid
+        self._fields = []
+        self._missing_fields = []
 
-  has_award INT,
-  has_related INT,
+        self.anime = Anime(aid)
 
-  updated INT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS anime_related (
-  aid INT NOT NULL,
-  related_aid INT NOT NULL,
-  related_is_sequel INT,
-  related_is_prequel INT,
-  related_same_setting INT,
-  related_alternative_setting INT,
-  related_alternative_version INT,
-  related_music_video INT,
-  related_character INT,
-  related_side_story INT,
-  related_parent_story INT,
-  related_summary INT,
-  related_full_story INT,
-  related_other INT
-);
-CREATE UNIQUE INDEX IF NOT EXISTS anime_related_aid ON anime_related (aid, related_aid);
-
-CREATE TABLE IF NOT EXISTS anime_name (
-  aid INT NOT NULL,
-  `name` TEXT NOT NULL,
-  name_type TEXT
-);
-CREATE INDEX IF NOT EXISTS anime_name_aid ON anime_name_other (aid, name_type);
-
-CREATE TABLE IF NOT EXISTS anime_award (
-  aid INT NOT NULL,
-  award TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS anime_award_aid ON anime_award (aid);
-
-CREATE TABLE IF NOT EXISTS anime_tags (
-  aid INT NOT NULL,
-  tag_id INT NOT NULL,
-  tag_name text NOT NULL,
-  tag_weight int
-);
-CREATE INDEX IF NOT EXISTS anime_tags_aid ON anime_tags (aid);
-
-CREATE TABLE IF NOT EXISTS anime_character (
-  aid INT NOT NULL,
-  cid INT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS anime_character_aid ON anime_character (aid, cid);
-CREATE INDEX IF NOT EXISTS anime_character_cid ON anime_character (cid, aid);
-        ''')
-
-    def get(self, aid, fields, max_age=None):
         c = self.dbh.cursor()
-        if max_age is None:
-            c.execute('SELECT * FROM anime WHERE aid = ?', (aid,))
-        else:
-            c.execute('SELECT * FROM anime WHERE aid = ? AND updated > ?', (aid, time() - max_age))
+        c.execute('SELECT updated FROM anime WHERE aid = ?', (aid,))
+        row = c.fetchone()
+        if row is not None and max_age < time() - row[0]:
+            self.delete()
+
+    def read(self, fields):
+        self._fields = fields
+        self._missing_fields = fields[:]
+
+        self._read_from_cache()
+        if len(self._missing_fields):
+            self._fetch_from_anidb()
+
+        return self.anime
+
+    def _read_from_cache(self):
+        c = self.dbh.cursor()
+        c.execute('SELECT * FROM anime WHERE aid = ?', (self.aid,))
         row = c.fetchone()
         if not row:
             return None
 
-        result = {'updated': row[0], 'aid': aid}
         row = row_hash(c, row)
-        if 'date_flags' in fields:
-            date_flags = row['data_flags']
-            result['date_flags'] = {
-                'start_unknown_day': date_flags & 0x80,
-                'start_unknown_month': date_flags & 0x40,
-                'end_unknown_day': date_flags & 0x20,
-                'end_unknown_month': date_flags & 0x10,
-                'has_ended': date_flags & 0x8,
-                'start_unknown_year': date_flags & 0x4,
-                'end_unknown_year': date_flags & 0x2
-            }
-        for field in fields:
-            if field in CacheAnime.fields_str or field in CacheAnime.fields_int or field in CacheAnime.fields_bool or field in CacheAnime.fields_date:
-                result[field] = c.execute('SELECT `{}` FROM anime WHERE aid = ?'.format(field), (aid,)).fetchone()[
-                    0]
-            if field in CacheAnime.fields_int and result[field] is not None:
-                result[field] = int(result[field])
-            if field in CacheAnime.fields_bool and result[field] is not None:
-                result[field] = bool(result[field])
-            if field in CacheAnime.fields_date and result[field] is not None:
-                result[field] = datetime.fromtimestamp(result[field])
+        self.anime.updated = row['updated']
 
-        if 'name' in fields:
-            c.execute('SELECT `name`, name_type FROM anime_name WHERE aid = ?', (aid,))
-            if c.rowcount == 0:
-                result['name'] = None
-            else:
-                result['name'] = {}
-                for row in c:
+        for field in self._fields:
+            if field in CacheAnime.fields_str:
+                setattr(self.anime, field, row[field])
+            elif field in CacheAnime.fields_int and row[field] is not None:
+                setattr(self.anime, field, int(row[field]))
+            elif field in CacheAnime.fields_bool and row[field] is not None:
+                setattr(self.anime, field, bool(row[field]))
+            elif field in CacheAnime.fields_date and row[field] is not None:
+                setattr(self.anime, field, datetime.fromtimestamp(row[field]))
+            if field in CacheAnime.fields_date or field in CacheAnime.fields_bool \
+                    or field in CacheAnime.fields_int or field in CacheAnime.fields_str:
+                self._missing_fields.remove(field)
+
+        want_name = False
+        for kind in ('romaji', 'kanji', 'english', 'other', 'short', 'synonym'):
+            if 'name_'.format(kind) in self._fields:
+                want_name = True
+        if want_name:
+            for kind in ('romaji', 'kanji', 'english'):
+                if 'name_'.format(kind) in self._fields and row['has_name_{}'.format(kind)]:
+                    setattr(self.anime.name, kind, '')
+            for kind in ('other', 'short', 'synonym'):
+                if 'name_'.format(kind) in self._fields and row['has_name_{}'.format(kind)]:
+                    setattr(self.anime.name, kind, [])
+            c.execute('SELECT `name`, name_type FROM anime_name WHERE aid = ?', (self.aid,))
+            for row in c:
+                if 'name_'.format(row[1]) in self._fields:
                     if row[1] in ('romaji', 'kanji', 'english'):
-                        result['name'][row[1]] = row[0]
-                    elif row[1] in ('other', 'short', 'synonym'):
-                        if result['name'][row[1]] is None:
-                            result['name'][row[1]] = []
-                        result['name'][row[1]].append(row[0])
+                        setattr(self.anime.name, kind, row[0])
+                    else:
+                        getattr(self.anime.name, kind).append(row[0])
+                    self._missing_fields.remove('name_'.format(kind))
 
-        if 'related' in fields:
-            c.execute('SELECT has_related FROM anime WHERE aid = ?', (aid,))
-            if not c.fetchone()[0]:
-                result['related'] = None
-            else:
-                c.execute('SELECT * FROM related WHERE aid = ?', (aid,))
-                result['related'] = {}
+        if 'related' in self._fields:
+            if row['has_related']:
+                c.execute('SELECT related_aid, related_type FROM anime_related WHERE aid = ?', (self.anime.aid,))
+                self.anime.related = {}
                 for row in c:
-                    result['related'][row[0]] = {
-                        'aid': int(row[1]),
-                        'is_sequel': bool(row[2]),
-                        'is_prequel': bool(row[3]),
-                        'same_setting': bool(row[4]),
-                        'alternative_setting': bool(row[5]),
-                        'alternative_version': bool(row[6]),
-                        'music_video': bool(row[7]),
-                        'character': bool(row[8]),
-                        'side_story': bool(row[9]),
-                        'parent_story': bool(row[10]),
-                        'summary': bool(row[11]),
-                        'full_story': bool(row[12]),
-                        'other': bool(row[13])
-                    }
+                    self.anime.related.append(AnimeRelated(row[0], row[1]))
+                self._missing_fields.remove('related')
 
-        if 'award' in fields:
-            c.execute('SELECT has_award FROM anime WHERE aid = ?', (aid,))
-            if not c.fetchone()[0]:
-                result['award'] = None
-            else:
-                c.execute('SELECT award FROM anime_award WHERE aid = ?', (aid,))
-                result['award'] = []
+        if 'award' in self._fields:
+            if row['has_award']:
+                c.execute('SELECT award FROM anime_award WHERE aid = ?', (self.anime.aid,))
+                self.anime.award = []
                 for row in c:
-                    result['award'].append(row[0])
+                    self.anime.award.append(row[0])
+                self._missing_fields.remove('award')
+
+        if 'tags' in self._fields:
+            if row['has_tags']:
+                self.anime.tags = {}
+                c.execute('SELECT tag_id, tag_name, tag_weight FROM anime_tags WHERE aid = ?', (self.anime.aid,))
+                for row in c:
+                    self.anime.tags[row[0]] = AnimeTag(row[0], row[1], row[2])
+                self._missing_fields.remove('tags')
+
+        if 'characters' in self._fields:
+            if row['has_characters']:
+                self.anime.characters = []
+                c.execute('SELECT cid FROM anime_character WHERE aid = ?', (self.anime.aid,))
+                for row in c:
+                    self.anime.characters.append(int(row[0]))
+                self._missing_fields.remove('characters')
+
+    def _fetch_from_anidb(self):
+        pass
+
+    def write_to_cache(self):
+        c = self.dbh.cursor()
+        c.execute('SELECT aid FROM anime WHERE aid = ?', (self.anime.aid,))
+        row = c.fetchone()
+        if not row:
+            c.execute('INSERT INTO anime (aid) VALUES (?)', (self.anime.aid,))
+
+        to_set = {}
+        for key in CacheAnime.fields_bool + CacheAnime.fields_int + CacheAnime.fields_str:
+            if getattr(self.anime, key) is not None:
+                to_set[key] = getattr(self.anime, key)
+        for key in CacheAnime.fields_date:
+            if getattr(self.anime, key) is not None:
+                to_set[key] = int(getattr(self.anime, key).timestamp())
+
+        q = 'UPDATE anime SET {} WHERE aid = ?'.format(map(lambda k: '`{}` = ?', to_set.keys()))
+        c.execute(q, list(to_set.values()) + [self.anime.aid])
+
+        for l in ('romaji', 'kanji', 'english'):
+            if getattr(self.anime.name, l) is not None:
+                c.execute('DELETE FROM anime_name WHERE aid = ? AND name_type = ?', (self.anime.aid, l))
+                c.execute("INSERT INTO anime_name (aid, name, name_type) VALUES (?, ?, ?)",
+                          (self.anime.aid, getattr(self.anime.name, l), l))
+                # noinspection SqlResolve
+                c.execute('UPDATE anime SET has_name_{} = 1 WHERE aid = ?'.format(l), (self.anime.aid,))
+        for l in ('other', 'short', 'synonym'):
+            if getattr(self.anime.name, l) is not None:
+                c.execute('DELETE FROM anime_name WHERE aid = ? AND name_type = ?', (self.anime.aid, l))
+                for i in getattr(self.anime.name, l):
+                    c.execute('INSERT INTO anime_name (aid, name, name_type) VALUES (?, ?, ?)', (self.anime.aid, i, l))
+                    # noinspection SqlResolve
+                    c.execute('UPDATE anime SET has_name_{} = 1 WHERE aid = ?'.format(l), (self.anime.aid,))
+
+        if self.anime.award is not None:
+            c.execute('DELETE FROM anime_award WHERE aid = ?', (self.anime.aid,))
+            c.execute('INSERT INTO anime_award (aid, award) VALUES (?, ?)',
+                      map(lambda a: (self.anime.aid, a), self.anime.award))
+            c.execute('UPDATE anime SET has_award = 1 WHERE aid = ?', (self.anime.aid,))
+
+        if self.anime.characters is not None:
+            c.execute('DELETE FROM anime_character WHERE aid = ?', (self.anime.aid,))
+            c.execute('INSERT INTO anime_character (aid, cid) VALUES (?, ?)',
+                      map(lambda a: (self.anime.aid, a,), self.anime.characters))
+            c.execute('UPDATE anime SET has_characters = 1 WHERE aid = ?', (self.anime.aid,))
+
+        if self.anime.related is not None:
+            c.execute('DELETE FROM anime_related WHERE aid = ?', (self.anime.aid,))
+            for i in self.anime.related:
+                c.execute('INSERT INTO anime_related (aid, related_aid, related_type) VALUES (?, ?, ?)',
+                          (self.anime.aid, i.related_id, i.related_type))
+
+        if self.anime.tags is not None:
+            c.execute('DELETE FROM anime_tags WHERE aid = ?', (self.anime.aid,))
+            for t in self.anime.tags:
+                c.execute('INSERT INTO anime_tags (aid, tag_id, tag_name, tag_weight) VALUES (?, ?, ?, ?)',
+                          (self.anime.aid, t.tag_id, t.tag_name, t.tag_weight))
+
+    def delete(self):
+        c = self.dbh.cursor()
+        c.execute('DELETE FROM anime_tags WHERE aid = ?', (self.aid,))
+        c.execute('DELETE FROM anime_related WHERE aid = ?', (self.aid,))
+        c.execute('DELETE FROM anime_name WHERE aid = ?', (self.aid,))
+        c.execute('DELETE FROM anime_character WHERE aid = ?', (self.aid,))
+        c.execute('DELETE FROM anime_award WHERE aid = ?', (self.aid,))
+        c.execute('DELETE FROM anime WHERE aid = ?', (self.aid,))
