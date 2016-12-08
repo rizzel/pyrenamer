@@ -1,0 +1,7 @@
+from os.path import expanduser, join
+
+anidb_user = ''
+anidb_password = ''
+outgoing_udp_port = 8017
+cache_db = join(expanduser('~'), '.pyrenamer', 'cache.sqlite3')
+debug_level = 'info' # one out of debug, info, warning, error, critical
