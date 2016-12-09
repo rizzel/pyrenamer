@@ -36,17 +36,17 @@ CREATE TABLE IF NOT EXISTS anime (
   other_count INT,
   trailer_count INT,
   parody_count INT,
+  name_romaji TEXT,
+  name_kanji TEXT,
+  name_english TEXT,
 
-  has_tags INT,
-  has_name_romaji INT,
-  has_name_kanji INT,
-  has_name_english INT,
   has_name_other INT,
   has_name_short INT,
   has_name_synonym INT,
-  has_award INT,
-  has_related INT,
+  has_awards INT,
   has_characters INT,
+  has_related INT,
+  has_tags INT,
 
   updated INT NOT NULL
 );
@@ -54,22 +54,22 @@ CREATE TABLE IF NOT EXISTS anime (
 CREATE TABLE IF NOT EXISTS anime_related (
   aid INT NOT NULL,
   related_aid INT NOT NULL,
-  related_type INT,
+  related_type INT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS anime_related_aid ON anime_related (aid, related_aid);
 
-CREATE TABLE IF NOT EXISTS anime_name (
+CREATE TABLE IF NOT EXISTS anime_names (
   aid INT NOT NULL,
   `name` TEXT NOT NULL,
   name_type TEXT
 );
-CREATE INDEX IF NOT EXISTS anime_name_aid ON anime_name_other (aid, name_type);
+CREATE INDEX IF NOT EXISTS anime_name_aid ON anime_names (aid, name_type);
 
-CREATE TABLE IF NOT EXISTS anime_award (
+CREATE TABLE IF NOT EXISTS anime_awards (
   aid INT NOT NULL,
   award TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS anime_award_aid ON anime_award (aid);
+CREATE INDEX IF NOT EXISTS anime_award_aid ON anime_awards (aid);
 
 CREATE TABLE IF NOT EXISTS anime_tags (
   aid INT NOT NULL,
@@ -79,9 +79,9 @@ CREATE TABLE IF NOT EXISTS anime_tags (
 );
 CREATE INDEX IF NOT EXISTS anime_tags_aid ON anime_tags (aid);
 
-CREATE TABLE IF NOT EXISTS anime_character (
+CREATE TABLE IF NOT EXISTS anime_characters (
   aid INT NOT NULL,
   cid INT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS anime_character_aid ON anime_character (aid, cid);
-CREATE INDEX IF NOT EXISTS anime_character_cid ON anime_character (cid, aid);
+CREATE INDEX IF NOT EXISTS anime_character_aid ON anime_characters (aid, cid);
+CREATE INDEX IF NOT EXISTS anime_character_cid ON anime_characters (cid, aid);

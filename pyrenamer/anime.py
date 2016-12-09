@@ -28,10 +28,16 @@ class Anime:
         self.record_updated = None
         self.is_restricted = None
 
+        self.name_romaji = None
+        self.name_kanji = None
+        self.name_english = None
+        self.name_other=None
+        self.name_short=None
+        self.name_synonym=None
+
         self.related = None
         """ :type: list[AnimeRelated]|None """
-        self.name = AnimeName()
-        self.award = None
+        self.awards = None
         """ :type: list[str]|None """
         self.tags = None
         """ :type: list[AnimeTag]|None """
@@ -39,6 +45,9 @@ class Anime:
         """ :type: list[int]|None """
 
         self.updated = None
+
+        self._fields_from_cache = []
+        self._load_cache()
 
     @property
     def start_unknown_day(self):
@@ -68,15 +77,9 @@ class Anime:
     def end_unknown_year(self):
         return self.date_flags is None or self.date_flags & 0x02
 
+    def _load_cache(self):
 
-class AnimeName:
-    def __init__(self):
-        self.romaji = None
-        self.kanji = None
-        self.english = None
-        self.other = None
-        self.short = None
-        self.synonym = None
+
 
 
 class AnimeRelated:

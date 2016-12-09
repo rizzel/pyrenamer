@@ -4,4 +4,7 @@ anidb_user = ''
 anidb_password = ''
 outgoing_udp_port = 8017
 cache_db = join(expanduser('~'), '.pyrenamer', 'cache.sqlite3')
-debug_level = 'info' # one out of debug, info, warning, error, critical
+debug_level = 'info'  # one out of debug, info, warning, error, critical
+anidb_update_interval = timedelta(weeks=2)
+anidb_host = 'api.anidb.net'
+anidb_port = 9000
