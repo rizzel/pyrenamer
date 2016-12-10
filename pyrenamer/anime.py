@@ -1,3 +1,6 @@
+from pyrenamer.anime_cache import AnimeCache
+
+
 class Anime:
     def __init__(self, aid):
         self.aid = aid
@@ -78,7 +81,8 @@ class Anime:
         return self.date_flags is None or self.date_flags & 0x02
 
     def _load_cache(self):
-
+        ac = AnimeCache(self)
+        ac.read()
 
 
 

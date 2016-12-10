@@ -10,22 +10,22 @@ from pyrenamer.config import anidb_update_interval
 
 
 class AnimeCache:
-    fields_str = ('year', 'type', 'url', 'picname',)
-    fields_int = (
+    _fields_str = ('year', 'type', 'url', 'picname',)
+    _fields_int = (
         'episodes_count', 'episode_max', 'episodes_special_count', 'rating', 'vote_count', 'rating_temp',
         'vote_count_temp', 'review_rating', 'review_count', 'ann_id', 'allcinema_id', 'animenfo_id',
         'specials_count', 'credits_count', 'other_count', 'trailer_count', 'parody_count', 'date_flags',
         'name_english', 'name_kanji', 'name_romaji',
     )
-    fields_date = ('date_air', 'date_end', 'record_updated',)
-    fields_bool = ('is_restricted',)
+    _fields_date = ('date_air', 'date_end', 'record_updated',)
+    _fields_bool = ('is_restricted',)
 
     def __init__(self, anime):
         """
 
         :param pyrenamer.anime.Anime anime: The anime to fill
         """
-        self.dbh = connect(cache_db)
+        self._dbh = connect(cache_db)
 
         self._was_read = False
 
@@ -35,7 +35,7 @@ class AnimeCache:
             if v:
                 self._missing_fields.append(k)
 
-        c = self.dbh.cursor()
+        c = self._dbh.cursor()
         c.execute('SELECT updated FROM anime WHERE aid = ?', (self.anime.aid,))
         row = c.fetchone()
         if row is not None:
@@ -52,7 +52,7 @@ class AnimeCache:
                 self._write_to_cache()
 
     def _read_from_cache(self):
-        c = self.dbh.cursor()
+        c = self._dbh.cursor()
         c.execute('SELECT * FROM anime WHERE aid = ?', (self.anime.aid,))
         row = c.fetchone()
         if not row:
@@ -62,16 +62,16 @@ class AnimeCache:
         self.anime.updated = datetime.fromtimestamp(row['updated'])
 
         for field in self._missing_fields:
-            if field in AnimeCache.fields_str:
+            if field in AnimeCache._fields_str:
                 setattr(self.anime, field, row[field])
-            elif field in AnimeCache.fields_int and row[field] is not None:
+            elif field in AnimeCache._fields_int and row[field] is not None:
                 setattr(self.anime, field, int(row[field]))
-            elif field in AnimeCache.fields_bool and row[field] is not None:
+            elif field in AnimeCache._fields_bool and row[field] is not None:
                 setattr(self.anime, field, bool(row[field]))
-            elif field in AnimeCache.fields_date and row[field] is not None:
+            elif field in AnimeCache._fields_date and row[field] is not None:
                 setattr(self.anime, field, datetime.fromtimestamp(row[field]))
-            if field in AnimeCache.fields_date or field in AnimeCache.fields_bool \
-                    or field in AnimeCache.fields_int or field in AnimeCache.fields_str:
+            if field in AnimeCache._fields_date or field in AnimeCache._fields_bool \
+                    or field in AnimeCache._fields_int or field in AnimeCache._fields_str:
                 self._missing_fields.remove(field)
 
         for kind in ('other', 'short', 'synonym'):
@@ -118,16 +118,16 @@ class AnimeCache:
         pass
 
     def _write_to_cache(self):
-        c = self.dbh.cursor()
+        c = self._dbh.cursor()
         self.delete()
         c.execute('INSERT INTO anime (aid, updated) VALUES (?, ?)', (self.anime.aid, int(datetime.now().timestamp())))
 
         to_set = anime_info_fields.keys()
 
-        for key in AnimeCache.fields_bool + AnimeCache.fields_int + AnimeCache.fields_str:
+        for key in AnimeCache._fields_bool + AnimeCache._fields_int + AnimeCache._fields_str:
             if getattr(self.anime, key) is not None:
                 to_set[key] = getattr(self.anime, key)
-        for key in AnimeCache.fields_date:
+        for key in AnimeCache._fields_date:
             if getattr(self.anime, key) is not None:
                 to_set[key] = int(getattr(self.anime, key).timestamp())
 
@@ -168,7 +168,7 @@ class AnimeCache:
         ))
 
     def delete(self):
-        c = self.dbh.cursor()
+        c = self._dbh.cursor()
         aid = self.anime.aid
         c.execute('DELETE FROM anime_tags WHERE aid = ?', (aid,))
         c.execute('DELETE FROM anime_related WHERE aid = ?', (aid,))

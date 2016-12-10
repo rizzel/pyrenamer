@@ -32,3 +32,11 @@ class Cache:
         :param mixed value: The value
         """
         self.dbh.execute('INSERT INTO cache (`key`, value, created) VALUES (?, ?, ?)', (key, value, time()))
+
+    def remove(self, key):
+        """
+        Remove a key from the cache
+
+        :param str key: The key
+        """
+        self.dbh.execute('DELETE FROM cache WHERE `key` = ?', (key,))

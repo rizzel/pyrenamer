@@ -47,7 +47,7 @@ anime_info_fields = dict(
 )
 
 file_info_fields = dict(
-    gid=False,
+    gid=False,  # enable fetching the group info
     mylist_id=True,
     other_episodes=False,
     state=False,
@@ -98,25 +98,6 @@ file_info_fields = dict(
     episode_vote_count=False,
     group_name=False,
     group_short_name=True
-)
-
-group_info_fields = dict(
-    rating=False,
-    votes=False,
-    count_anime=False,
-    count_files=False,
-    name=False,
-    name_short=True,
-    irc_channel=False,
-    irc_server=False,
-    url=False,
-    picname=False,
-    date_founded=False,
-    date_disbanded=False,
-    date_flags=False,
-    date_last_release=False,
-    date_last_activity=False,
-    relations=False
 )
 
 
