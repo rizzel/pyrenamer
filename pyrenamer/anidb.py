@@ -2,7 +2,7 @@ import logging
 from sqlite3 import connect
 from os.path import join, dirname
 from threading import Thread
-from queue import Queue
+from queue import Queue, Empty
 import socket
 from re import search
 from time import time, sleep
@@ -31,7 +31,9 @@ class AniDBThread(Thread):
     def __init__(self, command_queue, result_queue):
         super().__init__()
         self._command_queue = command_queue
+        """ :type: Queue """
         self._result_queue = result_queue
+        """ :type: Queue """
         self._auth = None
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._socket.bind(('0.0.0.0', config.outgoing_udp_port))
@@ -39,7 +41,26 @@ class AniDBThread(Thread):
         self._current_delay_idx = 0
 
     def run(self):
-        pass
+        while True:
+            try:
+                item = self._command_queue.get(True, 1)
+            except Empty:
+                if time() - self._last_send > 30 * 60:
+                    self.command_ping()
+                continue
+            if item is None:
+                break
+            f = {
+                'PING': self.command_ping,
+                'ANIME': self.command_anime,
+                'FILE': self.command_file,
+                'GROUP': self.command_group,
+                'MYLISTADD': self.command_mylist_add
+            }.get(item[0], None)
+            if f is None:
+                print("Unknown function {} - ignoring".format(item[0]))
+                continue
+            f(*item[1:])
 
     def _send(self, cmd, params=None):
         if cmd not in ('PING', 'ENCRYPT', 'ENCODING', 'AUTH', 'VERSION'):
@@ -61,6 +82,7 @@ class AniDBThread(Thread):
             result, address = self._socket.recvfrom(1400)
             result = result.decode('utf-8')  # type: str
             m = search(r'^(\d+) (.+)', result)
+            self._last_send = time()
             if m:
                 code = int(m.group(1))
                 data = m.group(2)
@@ -96,7 +118,7 @@ class AniDBThread(Thread):
 
                     return code, data
             else:
-                print("None received - server could be offline")
+                print("Nothing received - server could be offline")
                 exit(1)
         print("Maximum number of retries reached")
         exit(1)
@@ -130,11 +152,20 @@ class AniDBThread(Thread):
                 print("AniDB out of service - Try again later.")
                 exit(1)
             else:
+                print("Unexpected code during AUTH: {}".format(code))
                 print(data)
                 exit(1)
 
-    def command_ping(self):
-        self._send('PING')
+    def command_ping(self, do_nat=False):
+        code, data = self._send('PING', dict(nat=int(do_nat)))
+        if code == 300:
+            if do_nat:
+                port = int(data.split("\n")[1])
+                return port == config.outgoing_udp_port
+        else:
+            print("Unexepcted code during PING: {}".format(code))
+            print(data)
+            exit(1)
 
     def _do_logout(self):
         if self._auth is not None:
@@ -150,7 +181,7 @@ class AniDBThread(Thread):
             fields = data.split(r'|')
             return map(lambda s: s.replace('/', '|').replace('<br />', "\n").replace('<br/>', "\n"), fields)
         else:
-            print("Unexpected code: {}".format(code))
+            print("Unexpected code during ANIME: {}".format(code))
             print(data)
             exit(1)
 
@@ -165,7 +196,7 @@ class AniDBThread(Thread):
             print("Multiple files found!")
             return None
         else:
-            print("Unexpected code: {}".format(code))
+            print("Unexpected code during FILE: {}".format(code))
             print(data)
             exit(1)
 
@@ -178,7 +209,7 @@ class AniDBThread(Thread):
             print("No such group: {}".format(gid))
             return None
         else:
-            print("Unexpected code: {}".format(code))
+            print("Unexpected code during GROUP: {}".format(code))
             print(data)
             exit(1)
 
@@ -197,3 +228,9 @@ class AniDBThread(Thread):
         elif code == 310:
             lid = data.split("\n")[1].split('|')[0]
             print("Already in myList with id {}".format(lid))
+        elif code == 322:
+            print("Should not happen: Multiple files found")
+        else:
+            print("Unexpected code during MYLISTADD: {}".format(code))
+            print(data)
+            exit(1)
