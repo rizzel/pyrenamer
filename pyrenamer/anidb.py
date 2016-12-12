@@ -12,19 +12,6 @@ import pyrenamer.config as config
 from pyrenamer.cache import Cache
 
 
-class AniDB(metaclass=Singleton):
-    def __init__(self):
-        self.init_db()
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(config.debug_level.upper())
-
-    @staticmethod
-    def init_db():
-        dbh = connect(config.cache_db)
-        with open(join(dirname(__file__), 'schema.sql')) as f:
-            dbh.executescript(f.read())
-
-
 class AniDBThread(Thread):
     delays = (30, 2 * 60, 5 * 60, 10 * 60, 30 * 60, 60 * 60, 2 * 60 * 60, 3 * 60 * 60)
 
@@ -67,9 +54,11 @@ class AniDBThread(Thread):
             self._do_auth()
 
         to_send = cmd
-        if params is not None:
-            to_send += ' ' + '&'.join(filter(lambda v: v is not None,
-                                             map(lambda k, v: k + '=' + v if v is not None else None, params.items())))
+        if params is None:
+            params = {}
+        params['s'] = self._auth
+        to_send += ' ' + '&'.join(filter(lambda v: v is not None,
+                                         map(lambda k, v: k + '=' + v if v is not None else None, params.items())))
 
         retry = 5
         while retry > 0:
