@@ -10,3 +10,5 @@ class QueueData:
         """ :type: pyrenamer.hasher.Hasher """
         self.file_info = None
         """ :type: pyrenamer.file.FileInfo """
+        self.anime_info = None
+        """ :type: pyrenamer.anime.Anime """

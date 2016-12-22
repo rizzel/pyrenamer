@@ -1,13 +1,9 @@
-import logging
-from sqlite3 import connect
-from os.path import join, dirname
 from threading import Thread
 from queue import Queue, Empty
 import socket
 from re import search
 from time import time, sleep
 
-from pyrenamer import Singleton
 import pyrenamer.config as config
 from pyrenamer.cache import Cache
 
@@ -31,6 +27,7 @@ class AniDBThread(Thread):
         while True:
             try:
                 item = self._command_queue.get(True, 1)
+                # list of [result queue, command, parameters...]
             except Empty:
                 if time() - self._last_send > 30 * 60:
                     self.command_ping()
@@ -43,11 +40,11 @@ class AniDBThread(Thread):
                 'FILE': self.command_file,
                 'GROUP': self.command_group,
                 'MYLISTADD': self.command_mylist_add
-            }.get(item[0], None)
+            }.get(item[1], None)
             if f is None:
                 print("Unknown function {} - ignoring".format(item[0]))
                 continue
-            f(*item[1:])
+            item[0].put(f(*item[2:]))
 
     def _send(self, cmd, params=None):
         if cmd not in ('PING', 'ENCRYPT', 'ENCODING', 'AUTH', 'VERSION'):

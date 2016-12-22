@@ -1,3 +1,5 @@
+from pyrenamer.rename import file_info_fields
+
 class FileInfo:
     def __init__(self, queue_data, anidb_queue_in, anidb_queue_out):
         """
@@ -23,5 +25,5 @@ class FileInfo:
         self.fid = int(list(self._anidb_queue_out.get())[0])
 
     def get_info(self):
-
+        if 'url' in file_info_fields:
 
